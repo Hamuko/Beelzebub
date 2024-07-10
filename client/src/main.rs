@@ -78,7 +78,11 @@ fn handle_process_start(
     map.insert(pid, watch);
 }
 
-fn handle_process_end(map: &mut ProcessWatchMap, event: win::ProcessEndResult) {
+fn handle_process_end(
+    config: &RwLock<config::Config>,
+    map: &mut ProcessWatchMap,
+    event: win::ProcessEndResult,
+) {
     let event = match event {
         Ok(event) => event,
         Err(error) => {
@@ -87,11 +91,23 @@ fn handle_process_end(map: &mut ProcessWatchMap, event: win::ProcessEndResult) {
         }
     };
     if let Some(watch) = map.remove(&event.target_instance.process_id) {
+        let duration_seconds = watch.start.elapsed().as_secs();
         info!(
-            "Process {} ran for {} seconds",
+            "Process {} ({}) ran for {} seconds",
+            watch.name.unwrap_or(String::from("?")),
             watch.executable,
-            watch.start.elapsed().as_secs()
+            duration_seconds
         );
+
+        let config = config.read().unwrap();
+        let minimum_duration = config.minimum_duration;
+        if duration_seconds < minimum_duration.into() {
+            info!(
+                "Skipping submission: doesn't meet minimum duration of {} seconds",
+                minimum_duration
+            );
+            return;
+        }
     }
 }
 
@@ -149,7 +165,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     loop {
         tokio::select! {
             Some(event) = stream_start.next() => handle_process_start(&config, &mut process_watch, event),
-            Some(event) = stream_end.next() => handle_process_end(&mut process_watch, event),
+            Some(event) = stream_end.next() => handle_process_end(&config, &mut process_watch, event),
             else => break,
         }
     }
