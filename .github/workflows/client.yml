@@ -1,0 +1,75 @@
+name: Build client
+
+on:
+  push:
+    paths:
+      - .github/workflows/client.yml
+      - Cargo.lock
+      - Cargo.toml
+      - client/*
+      - Dockerfile
+      - shared/*
+      - '!server/Cargo.toml'
+  pull_request:
+    paths:
+      - .github/workflows/client.yml
+      - Cargo.lock
+      - Cargo.toml
+      - client/*
+      - Dockerfile
+      - shared/*
+      - '!server/Cargo.toml'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: windows-latest
+    env:
+      NAME: beelzebub-client
+      TARGET: x86_64-pc-windows-msvc
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cargo cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ./target
+          key: build-cargo-registry-${{ env.NAME }}-${{ env.TARGET }}
+      - name: Install rust target
+        shell: bash
+        run: rustup target add $TARGET
+      - name: Run build
+        shell: bash
+        run: cargo build --bin $NAME --release --verbose --target $TARGET
+      - name: Compress
+        shell: bash
+        run: |
+          mkdir -p ./artifacts
+          EXEC=$NAME.exe
+          mv ./target/$TARGET/release/$EXEC ./$EXEC
+          tar -czf ./artifacts/$NAME-$TARGET-$GITHUB_REF_NAME.tar.gz $EXEC
+      - name: Archive artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-build-${{ env.TARGET }}
+          path: |
+            ./artifacts
+
+  deploy:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./artifacts
+          pattern: release-build-*
+          merge-multiple: true
+      - name: Release to GitHub
+        uses: softprops/action-gh-release@v1
+        with:
+          files: ./artifacts/*.tar.gz
