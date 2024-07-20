@@ -22,7 +22,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  IMAGE_NAME: beelzebub-server
+  IMAGE_NAME: hamuko/beelzebub-server
   REGISTRY: ghcr.io
 
 jobs:
