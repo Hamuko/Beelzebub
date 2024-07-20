@@ -20,13 +20,15 @@ pub enum Error {
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Config {
-    #[serde(default = "default_minimum_duration")] 
+    #[serde(default = "default_minimum_duration")]
     pub minimum_duration: u32,
 
     pub monitor: Vec<PathBuf>,
 }
 
-fn default_minimum_duration() -> u32 { 0 }
+fn default_minimum_duration() -> u32 {
+    0
+}
 
 impl Config {
     pub fn get_path() -> Result<PathBuf, Error> {

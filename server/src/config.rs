@@ -1,4 +1,4 @@
-    use log::debug;
+use log::debug;
 use serde::Deserialize;
 use shared;
 use std::fs::File;

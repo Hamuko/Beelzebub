@@ -106,7 +106,6 @@ impl Process {
         };
 
         for lang_code_page in lang_code_pages {
-            debug!("{:?}", lang_code_page);
             let sub_block = format!(
                 "\\StringFileInfo\\{:04x}{:04x}\\ProductName\0",
                 lang_code_page.0, lang_code_page.1,

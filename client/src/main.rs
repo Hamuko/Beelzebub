@@ -1,12 +1,12 @@
 use futures::StreamExt;
 use std::collections::HashMap;
 use std::path::Path;
+use std::sync::{Arc, RwLock};
 use std::time::Instant;
 
 use log::{debug, error, info, warn, LevelFilter};
 use notify::Watcher;
 use simple_logger::SimpleLogger;
-use std::sync::{Arc, RwLock};
 
 mod config;
 mod win;
@@ -119,12 +119,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .init()
         .unwrap();
 
-    let config_path = match config::Config::get_path() {
-        Ok(path) => path,
-        Err(_) => {
-            error!("Could not determine configuration path");
-            return Ok(());
-        }
+    let Ok(config_path) = config::Config::get_path() else {
+        error!("Could not determine configuration path");
+        return Ok(());
     };
     let config = match config::Config::load(&config_path) {
         Ok(config) => Arc::new(RwLock::new(config)),
