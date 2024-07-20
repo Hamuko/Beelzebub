@@ -2,7 +2,23 @@ name: Build server
 
 on:
   push:
+    paths:
+      - .github/workflows/server.yml
+      - Cargo.lock
+      - Cargo.toml
+      - Dockerfile
+      - server/*
+      - shared/*
+      - '!client/Cargo.toml'
   pull_request:
+    paths:
+      - .github/workflows/server.yml
+      - Cargo.lock
+      - Cargo.toml
+      - Dockerfile
+      - server/*
+      - shared/*
+      - '!client/Cargo.toml'
 
 env:
   CARGO_TERM_COLOR: always
