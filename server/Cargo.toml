@@ -1,5 +1,5 @@
 [package]
-name = "beelzebub-client"
+name = "beelzebub-server"
 version = "0.1.0"
 edition = "2021"
 
@@ -8,16 +8,14 @@ edition = "2021"
 [dependencies]
 shared = { path = "../shared" }
 
+axum = "0.7"
+deadpool-diesel = { version = "0.6", features = ["postgres"] }
+diesel = { version = "2.2", features = ["postgres"] }
+diesel_migrations = "2.2"
 directories = { workspace = true }
-futures = "0.3"
 log = { workspace = true }
 notify = { workspace = true }
 serde = { workspace = true }
 serde_yaml = { workspace = true }
 simple_logger = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
-wmi = "0.13"
-
-[dependencies.windows]
-version = "0.58"
-features = ["Win32_Storage_FileSystem"]

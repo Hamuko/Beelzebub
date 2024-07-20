@@ -1,9 +1,8 @@
-use std::fs::File;
-use std::path::{Path, PathBuf};
-
-use log::debug;
+    use log::debug;
 use serde::Deserialize;
 use shared;
+use std::fs::File;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug)]
 pub enum Error {
@@ -20,13 +19,10 @@ pub enum Error {
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Config {
-    #[serde(default = "default_minimum_duration")] 
-    pub minimum_duration: u32,
+    pub db_url: String,
 
-    pub monitor: Vec<PathBuf>,
+    pub secret: Option<String>,
 }
-
-fn default_minimum_duration() -> u32 { 0 }
 
 impl Config {
     pub fn get_path() -> Result<PathBuf, Error> {
@@ -39,18 +35,8 @@ impl Config {
         };
         let mut config_path = PathBuf::new();
         config_path.push(project_directory.config_dir());
-        config_path.push("client.yaml");
+        config_path.push("server.yaml");
         return Ok(config_path);
-    }
-
-    /// Given path is configured for monitoring.
-    pub fn is_monitored(&self, path: &Path) -> bool {
-        for monitor in &self.monitor {
-            if path.starts_with(monitor) {
-                return true;
-            }
-        }
-        return false;
     }
 
     pub fn load(config_path: &Path) -> Result<Self, Error> {
