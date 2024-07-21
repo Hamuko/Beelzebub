@@ -24,6 +24,9 @@ pub struct Config {
     pub minimum_duration: u32,
 
     pub monitor: Vec<PathBuf>,
+
+    pub url: String,
+    pub secret: Option<String>,
 }
 
 fn default_minimum_duration() -> u32 {

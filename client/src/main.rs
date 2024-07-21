@@ -6,6 +6,7 @@ use std::time::Instant;
 
 use log::{debug, error, info, warn, LevelFilter};
 use notify::Watcher;
+use reqwest::{StatusCode, Url};
 use simple_logger::SimpleLogger;
 
 mod config;
@@ -33,7 +34,7 @@ impl Watch {
     }
 }
 
-fn handle_process_start(
+async fn handle_process_start(
     config: &RwLock<config::Config>,
     map: &mut ProcessWatchMap,
     event: win::ProcessStartResult,
@@ -78,7 +79,7 @@ fn handle_process_start(
     map.insert(pid, watch);
 }
 
-fn handle_process_end(
+async fn handle_process_end(
     config: &RwLock<config::Config>,
     map: &mut ProcessWatchMap,
     event: win::ProcessEndResult,
@@ -90,25 +91,67 @@ fn handle_process_end(
             return;
         }
     };
-    if let Some(watch) = map.remove(&event.target_instance.process_id) {
-        let duration_seconds = watch.start.elapsed().as_secs();
-        info!(
-            "Process {} ({}) ran for {} seconds",
-            watch.name.unwrap_or(String::from("?")),
-            watch.executable,
-            duration_seconds
-        );
+    let Some(watch) = map.remove(&event.target_instance.process_id) else {
+        return;
+    };
 
-        let config = config.read().unwrap();
-        let minimum_duration = config.minimum_duration;
-        if duration_seconds < minimum_duration.into() {
-            info!(
-                "Skipping submission: doesn't meet minimum duration of {} seconds",
-                minimum_duration
-            );
+    let duration_seconds = watch.start.elapsed().as_secs();
+    info!(
+        "Process {} ({}) ran for {} seconds",
+        watch.name.as_ref().unwrap_or(&String::from("?")),
+        &watch.executable,
+        duration_seconds
+    );
+
+    let config = config.read().unwrap();
+    let minimum_duration = config.minimum_duration;
+    if duration_seconds < minimum_duration.into() {
+        info!(
+            "Skipping submission: doesn't meet minimum duration of {} seconds",
+            minimum_duration
+        );
+        return;
+    }
+
+    let submission = shared::Submission {
+        duration: duration_seconds,
+        executable: watch.executable,
+        name: watch.name,
+    };
+    submit(&config, submission).await;
+}
+
+async fn submit(config: &config::Config, submission: shared::Submission) {
+    // TODO: Check/make the URL when the configuration is parsed.
+    let Ok(url) = Url::parse(&config.url).and_then(|u| u.join("/submit")) else {
+        error!("Could not parse URL {}", &config.url);
+        return;
+    };
+
+    let client = reqwest::Client::new();
+    let mut request = client.post(url).json(&submission);
+    if let Some(secret) = &config.secret {
+        request = request.header("X-Secret-Key", secret);
+    }
+    match request.send().await {
+        Ok(response) => {
+            let status_code = response.status();
+            match status_code {
+                StatusCode::CREATED => info!("Event submitted to the server"),
+                StatusCode::INTERNAL_SERVER_ERROR => {
+                    info!("Error submitting event: unknown server error.")
+                }
+                StatusCode::UNAUTHORIZED => error!(
+                    "Error submitting event: unauthorized. Double check secret key settings."
+                ),
+                _ => warn!("Unknown response from the server: {}", status_code),
+            }
+        }
+        Err(error) => {
+            error!("Could not submit event to server: {}", error);
             return;
         }
-    }
+    };
 }
 
 #[tokio::main]
@@ -161,8 +204,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("Listening to events");
     loop {
         tokio::select! {
-            Some(event) = stream_start.next() => handle_process_start(&config, &mut process_watch, event),
-            Some(event) = stream_end.next() => handle_process_end(&config, &mut process_watch, event),
+            Some(event) = stream_start.next() => handle_process_start(&config, &mut process_watch, event).await,
+            Some(event) = stream_end.next() => handle_process_end(&config, &mut process_watch, event).await,
             else => break,
         }
     }
