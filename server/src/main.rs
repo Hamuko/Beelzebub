@@ -82,6 +82,13 @@ fn get_process(conn: &mut PgConnection, payload: &shared::Submission) -> Result<
     }
 }
 
+fn database_error() -> (StatusCode, Json<shared::SubmissionResponse>) {
+    let response = shared::SubmissionResponse {
+        status: shared::SubmissionResponseStatus::DatabaseError,
+    };
+    return (StatusCode::INTERNAL_SERVER_ERROR, Json(response));
+}
+
 async fn submit(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -96,18 +103,15 @@ async fn submit(
 
     let Ok(conn) = state.pool.get().await else {
         error!("Could not get connection from pool");
-        let response = shared::SubmissionResponse {
-            status: shared::SubmissionResponseStatus::DatabaseError,
-        };
-        return (StatusCode::INTERNAL_SERVER_ERROR, Json(response));
+        return database_error();
     };
-    let _ = conn
+    let result = conn
         .interact(move |conn| {
             use diesel::{ExpressionMethods, RunQueryDsl};
             use schema::events::dsl::*;
 
             let Ok(process_id) = get_process(conn, &payload) else {
-                return;
+                return Err(());
             };
             let interval = PgInterval::from_microseconds(payload.duration as i64 * 1_000_000);
             match diesel::insert_into(events)
@@ -119,10 +123,18 @@ async fn submit(
                 .execute(conn)
             {
                 Ok(_) => info!("Process {} saved", payload.display()),
-                Err(error) => error!("Could not save event for {}: {}", payload.display(), error),
+                Err(error) => {
+                    error!("Could not save event for {}: {}", payload.display(), error);
+                    return Err(());
+                }
             }
+            Ok(())
         })
         .await;
+
+    if result.is_err() {
+        return database_error();
+    }
 
     let response = shared::SubmissionResponse {
         status: shared::SubmissionResponseStatus::Ok,
