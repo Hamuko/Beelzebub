@@ -15,6 +15,8 @@ RUN cargo build --bin beelzebub-server --release --verbose
 
 FROM debian:bookworm-slim
 
+RUN apt-get update && apt-get install -y libpq5 && rm -rf /var/lib/apt/lists/*
+
 COPY --from=build /Beelzebub/target/release/beelzebub-server .
 
 EXPOSE 8080
