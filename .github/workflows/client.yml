@@ -6,18 +6,18 @@ on:
       - .github/workflows/client.yml
       - Cargo.lock
       - Cargo.toml
-      - client/*
+      - client/**/*
       - Dockerfile
-      - shared/*
+      - shared/**/*
       - '!server/Cargo.toml'
   pull_request:
     paths:
       - .github/workflows/client.yml
       - Cargo.lock
       - Cargo.toml
-      - client/*
+      - client/**/*
       - Dockerfile
-      - shared/*
+      - shared/**/*
       - '!server/Cargo.toml'
 
 env:
