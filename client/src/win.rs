@@ -10,6 +10,16 @@ use windows::{
     Win32::Storage::FileSystem::{GetFileVersionInfoSizeW, GetFileVersionInfoW, VerQueryValueW},
 };
 use wmi::{COMLibrary, FilterValue, WMIConnection, WMIError};
+
+const FALLBACK_LANG_CODES: [(u16, u16); 6] = [
+    (0x0409, 0x04E4), // U.S. English Windows Multilingual
+    (0x0409, 0x04B0), // U.S. English Unicode
+    (0x0000, 0x04E4), // Neutral  Windows Multilingual
+    (0x0409, 0x0000), // U.S. English Neutral
+    (0x0000, 0x0000), // Neutral  Neutral
+    (0x0000, 0x04B0), // Neutral Unicode
+];
+
 pub type ProcessStartResult = Result<ProcessStartEvent, WMIError>;
 pub type ProcessEndResult = Result<ProcessEndEvent, WMIError>;
 
@@ -34,6 +44,50 @@ pub struct Process {
     pub name: String,
     pub executable_path: Option<String>,
     parent_process_id: u32,
+}
+
+fn read_product_name(
+    version_info_buffer: &mut Vec<u8>,
+    lang_code_page: &(u16, u16),
+) -> Result<String, ()> {
+    let sub_block = format!(
+        "\\StringFileInfo\\{:04x}{:04x}\\ProductName\0",
+        lang_code_page.0, lang_code_page.1,
+    )
+    .encode_utf16()
+    .collect::<Vec<u16>>();
+    let mut product_name_ptr = std::ptr::null_mut();
+    let mut product_name_length = 0;
+    unsafe {
+        let query_success = VerQueryValueW(
+            version_info_buffer.as_mut_ptr() as *mut std::ffi::c_void,
+            PCWSTR::from_raw(sub_block.as_ptr()),
+            &mut product_name_ptr,
+            &mut product_name_length,
+        )
+        .as_bool();
+        if !query_success {
+            debug!(
+                "Could not retrieve product name for language {:04x}{:04x}: \
+                        couldn't query product name",
+                lang_code_page.0, lang_code_page.1
+            );
+            return Err(());
+        }
+    }
+    if product_name_length == 0 {
+        debug!(
+            "Could not retrieve product name for language {:04x}{:04x}: \
+                    no product name",
+            lang_code_page.0, lang_code_page.1
+        );
+        return Err(());
+    }
+    let product_name = unsafe {
+        std::slice::from_raw_parts(product_name_ptr.cast(), product_name_length as usize - 1)
+    };
+    let product_name = String::from_utf16_lossy(product_name);
+    return Ok(product_name);
 }
 
 impl Process {
@@ -106,47 +160,33 @@ impl Process {
         };
 
         for lang_code_page in lang_code_pages {
-            let sub_block = format!(
-                "\\StringFileInfo\\{:04x}{:04x}\\ProductName\0",
-                lang_code_page.0, lang_code_page.1,
-            )
-            .encode_utf16()
-            .collect::<Vec<u16>>();
-            let mut product_name_ptr = std::ptr::null_mut();
-            let mut product_name_length = 0;
-            unsafe {
-                let query_success = VerQueryValueW(
-                    version_info_buffer.as_mut_ptr() as *mut std::ffi::c_void,
-                    PCWSTR::from_raw(sub_block.as_ptr()),
-                    &mut product_name_ptr,
-                    &mut product_name_length,
-                )
-                .as_bool();
-                if !query_success {
+            match read_product_name(&mut version_info_buffer, lang_code_page) {
+                Ok(product_name) => return Some(product_name),
+                Err(_) => {
                     debug!(
-                        "Could not retrieve product name for language {:04x}{:04x}: \
-                        couldn't query product name",
-                        lang_code_page.0, lang_code_page.1
+                        "Could not find product name for language \"{:04x}{:04x}\"",
+                        lang_code_page.0, lang_code_page.1,
                     );
-                    continue;
                 }
             }
-            if product_name_length == 0 {
-                debug!(
-                    "Could not retrieve product name for language {:04x}{:04x}: \
-                    no product name",
-                    lang_code_page.0, lang_code_page.1
-                );
-                continue;
+        }
+
+        // In case none of the languages in \VarFileInfo\Translation return any
+        // useful data, which is completely possible because Windows doesn't
+        // really care about things existing, try some fallback language codes
+        // that might actually exist.
+        // This for example fixes reading Forza Horizon 4, which will not return
+        // anything with the language codes returned by \VarFileInfo\Translation.
+        for lang_code_page in FALLBACK_LANG_CODES {
+            match read_product_name(&mut version_info_buffer, &lang_code_page) {
+                Ok(product_name) => return Some(product_name),
+                Err(_) => {
+                    debug!(
+                        "Could not find product name for language \"{:04x}{:04x}\"",
+                        lang_code_page.0, lang_code_page.1,
+                    );
+                }
             }
-            let product_name = unsafe {
-                std::slice::from_raw_parts(
-                    product_name_ptr.cast(),
-                    product_name_length as usize - 1,
-                )
-            };
-            let product_name = String::from_utf16_lossy(product_name);
-            return Some(product_name);
         }
 
         warn!(
