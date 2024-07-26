@@ -5,7 +5,7 @@ CREATE TABLE processes (
     export BOOLEAN DEFAULT true NOT NULL
 );
 
-CREATE UNIQUE INDEX unique_process ON processes (executable, name);
+CREATE UNIQUE INDEX unique_process ON processes (executable, name) NULLS NOT DISTINCT;
 
 CREATE TABLE events (
     id SERIAL PRIMARY KEY,
