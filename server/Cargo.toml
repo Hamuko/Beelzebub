@@ -19,3 +19,6 @@ serde = { workspace = true }
 serde_yaml = { workspace = true }
 simple_logger = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+
+[dev-dependencies]
+test-case = "*"

@@ -19,6 +19,7 @@ use simple_logger::SimpleLogger;
 mod config;
 mod db;
 mod schema;
+mod util;
 
 type ConfigReference = Arc<RwLock<config::Config>>;
 
@@ -53,8 +54,10 @@ fn is_authenticated(headers: &HeaderMap, config: &ConfigReference) -> bool {
 fn get_process(conn: &mut PgConnection, payload: &shared::Submission) -> Result<i32, ()> {
     use schema::processes::dsl::*;
 
+    let process_name = payload.name.as_ref().map(|s| util::clean_name(s));
+
     match diesel::insert_into(processes)
-        .values((executable.eq(&payload.executable), name.eq(&payload.name)))
+        .values((executable.eq(&payload.executable), name.eq(process_name)))
         .returning(id)
         .get_results::<i32>(conn)
     {
@@ -62,7 +65,7 @@ fn get_process(conn: &mut PgConnection, payload: &shared::Submission) -> Result<
         Err(DatabaseError(UniqueViolation, _)) => {
             match processes
                 .filter(executable.eq(&payload.executable))
-                .filter(name.eq(&payload.name))
+                .filter(name.eq(process_name))
                 .limit(1)
                 .select(id)
                 .load(conn)
