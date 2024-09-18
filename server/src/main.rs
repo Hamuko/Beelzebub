@@ -56,6 +56,22 @@ fn get_process(conn: &mut PgConnection, payload: &shared::Submission) -> Result<
 
     let process_name = payload.name.as_ref().map(|s| util::clean_name(s));
 
+    let mut query = processes
+        .limit(1)
+        .select(id)
+        .filter(executable.eq(&payload.executable))
+        .into_boxed();
+    if process_name.is_some() {
+        query = query.filter(name.eq(process_name));
+    } else {
+        query = query.filter(name.is_null());
+    }
+    if let Ok(results) = query.limit(1).select(id).load::<i32>(conn) {
+        if let Some(result) = results.first() {
+            return Ok(*result);
+        }
+    }
+
     match diesel::insert_into(processes)
         .values((executable.eq(&payload.executable), name.eq(process_name)))
         .returning(id)
@@ -63,13 +79,17 @@ fn get_process(conn: &mut PgConnection, payload: &shared::Submission) -> Result<
     {
         Ok(result) => return Ok(result[0]),
         Err(DatabaseError(UniqueViolation, _)) => {
-            match processes
-                .filter(executable.eq(&payload.executable))
-                .filter(name.eq(process_name))
+            let mut query = processes
                 .limit(1)
                 .select(id)
-                .load(conn)
-            {
+                .filter(executable.eq(&payload.executable))
+                .into_boxed();
+            if process_name.is_some() {
+                query = query.filter(name.eq(process_name));
+            } else {
+                query = query.filter(name.is_null());
+            }
+            match query.load::<i32>(conn) {
                 Ok(results) => return Ok(results[0]),
                 Err(error) => {
                     error!("Unknown database error during SELECT: {}", error);
